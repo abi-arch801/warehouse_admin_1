@@ -1,9 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'app_theme.dart';
+import 'stock_check_pages.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Item Management — Admin CRUD inventaris.
-// Admin bisa cari, filter kategori, tambah, edit, hapus, dan atur stok.
+//
+// Versi terhubung dengan halaman lain:
+//   • Memakai dataset bersama `kSharedStockItems` (dari stock_check_pages.dart)
+//     supaya perubahan stok terlihat di Beranda, Cek Stok, dan Update Bulanan.
+//   • Tombol AppBar:
+//       - Cek Stok      → buka StockCheckPage
+//       - Update Bulanan → buka MonthlyStockUpdatePage
+//       - QR Scanner    → bottom sheet simulasi pemindaian
+//   • Tap kartu item   → bottom sheet detail dengan tombol Cek Stok/Edit/Hapus.
+//   • Filter chip menampilkan jumlah item per kategori.
+//   • Animasi list, swipe-to-delete, undo snackbar, pull-to-refresh.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ItemManagementPage extends StatefulWidget {
@@ -26,113 +38,7 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
     'Pipa',
   ];
 
-  late List<Map<String, dynamic>> _items;
-
-  @override
-  void initState() {
-    super.initState();
-    _items = [
-      {
-        'id': 'P02',
-        'name': 'Pompa Submersible 1 HP',
-        'category': 'Pompa',
-        'stock': 12,
-        'unit': 'unit',
-        'min': 5,
-        'location': 'Rak A-03',
-      },
-      {
-        'id': 'P03',
-        'name': 'Pompa Submersible 2 HP',
-        'category': 'Pompa',
-        'stock': 2,
-        'unit': 'unit',
-        'min': 5,
-        'location': 'Rak A-04',
-      },
-      {
-        'id': 'F04',
-        'name': 'Membran RO 4040',
-        'category': 'Filter',
-        'stock': 1,
-        'unit': 'modul',
-        'min': 4,
-        'location': 'Rak B-12',
-      },
-      {
-        'id': 'F11',
-        'name': 'Media Karbon Aktif 25kg',
-        'category': 'Filter',
-        'stock': 80,
-        'unit': 'kg',
-        'min': 50,
-        'location': 'Rak B-09',
-      },
-      {
-        'id': 'F28',
-        'name': 'UV Sterilizer 11W',
-        'category': 'Filter',
-        'stock': 0,
-        'unit': 'unit',
-        'min': 3,
-        'location': 'Rak B-15',
-      },
-      {
-        'id': 'B02',
-        'name': 'Blower Roots 1 HP',
-        'category': 'Blower',
-        'stock': 6,
-        'unit': 'unit',
-        'min': 3,
-        'location': 'Rak C-02',
-      },
-      {
-        'id': 'B07',
-        'name': 'Diffuser Gelembung Halus 12"',
-        'category': 'Blower',
-        'stock': 45,
-        'unit': 'unit',
-        'min': 20,
-        'location': 'Rak C-08',
-      },
-      {
-        'id': 'K05',
-        'name': 'MCB 3 Phase 16A',
-        'category': 'Panel',
-        'stock': 3,
-        'unit': 'unit',
-        'min': 10,
-        'location': 'Rak K-05',
-      },
-      {
-        'id': 'K20',
-        'name': 'Box Panel IP54 400x300',
-        'category': 'Panel',
-        'stock': 14,
-        'unit': 'unit',
-        'min': 5,
-        'location': 'Rak K-12',
-      },
-      {
-        'id': 'S05',
-        'name': 'Pipa PVC AW 2" / 6m',
-        'category': 'Pipa',
-        'stock': 90,
-        'unit': 'meter',
-        'min': 30,
-        'location': 'Rak D-02',
-      },
-      {
-        'id': 'S18',
-        'name': 'Ball Valve PVC 2"',
-        'category': 'Pipa',
-        'stock': 25,
-        'unit': 'unit',
-        'min': 10,
-        'location': 'Rak D-08',
-      },
-    ];
-  }
+  List<Map<String, dynamic>> get _items => kSharedStockItems;
 
   @override
   void dispose() {
@@ -151,6 +57,11 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
     }).toList();
   }
 
+  int _categoryCount(String cat) {
+    if (cat == 'Semua') return _items.length;
+    return _items.where((it) => it['category'] == cat).length;
+  }
+
   Color _stockColor(int stock, int min) {
     if (stock == 0) return AppTheme.statusRejected;
     if (stock < min) return AppTheme.statusPending;
@@ -163,7 +74,16 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
     return 'Tersedia';
   }
 
+  Future<void> _refresh() async {
+    HapticFeedback.lightImpact();
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  // ─────────────────────────── Add/Edit form ───────────────────────────
   void _showItemForm({Map<String, dynamic>? edit}) {
+    HapticFeedback.selectionClick();
     final isEdit = edit != null;
     final idCtrl = TextEditingController(text: edit?['id'] as String? ?? '');
     final nameCtrl =
@@ -176,8 +96,7 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
         TextEditingController(text: (edit?['min'] ?? 0).toString());
     final locCtrl =
         TextEditingController(text: edit?['location'] as String? ?? '');
-    String selectedCat =
-        edit?['category'] as String? ?? _categories[1];
+    String selectedCat = edit?['category'] as String? ?? _categories[1];
 
     showModalBottomSheet(
       context: context,
@@ -193,7 +112,8 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
             builder: (ctx, setSheet) => Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Column(
                 children: [
@@ -273,6 +193,9 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
                               child: TextField(
                                 controller: stockCtrl,
                                 keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
                                 decoration: const InputDecoration(
                                   labelText: 'Stok',
                                   prefixIcon: Icon(Icons.numbers_rounded),
@@ -285,7 +208,8 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
                                 controller: unitCtrl,
                                 decoration: const InputDecoration(
                                   labelText: 'Satuan',
-                                  prefixIcon: Icon(Icons.straighten_rounded),
+                                  prefixIcon:
+                                      Icon(Icons.straighten_rounded),
                                 ),
                               ),
                             ),
@@ -295,6 +219,9 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
                         TextField(
                           controller: minCtrl,
                           keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
                           decoration: const InputDecoration(
                             labelText: 'Stok Minimum',
                             prefixIcon: Icon(Icons.warning_amber_rounded),
@@ -318,8 +245,7 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
                                 'id': idCtrl.text.trim(),
                                 'name': nameCtrl.text.trim(),
                                 'category': selectedCat,
-                                'stock':
-                                    int.tryParse(stockCtrl.text) ?? 0,
+                                'stock': int.tryParse(stockCtrl.text) ?? 0,
                                 'unit': unitCtrl.text.trim(),
                                 'min': int.tryParse(minCtrl.text) ?? 0,
                                 'location': locCtrl.text.trim(),
@@ -371,6 +297,201 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
     );
   }
 
+  // ─────────────────────────── Detail sheet ───────────────────────────
+  void _showItemDetail(Map<String, dynamic> it) {
+    HapticFeedback.selectionClick();
+    final stock = it['stock'] as int;
+    final min = it['min'] as int;
+    final c = _stockColor(stock, min);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Text(
+                      it['id'] as String,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        it['name'] as String,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: c.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '$stock ${it['unit']} · '
+                          '${_stockLabel(stock, min)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: c,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _detailRow('Kategori', it['category'] as String),
+            _detailRow('Lokasi', it['location'] as String),
+            _detailRow('Stok minimum', '$min ${it['unit']}'),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.statusRejected,
+                      side: const BorderSide(
+                          color: AppTheme.statusRejected),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _confirmDelete(it);
+                    },
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('Hapus'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(color: AppTheme.primary),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showItemForm(edit: it);
+                    },
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MonthlyStockUpdatePage(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.edit_calendar_rounded, size: 18),
+                label: const Text('Update Stok Bulanan'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────── Delete ───────────────────────────
   void _confirmDelete(Map<String, dynamic> item) {
     showDialog(
       context: context,
@@ -396,12 +517,28 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
           ),
           ElevatedButton(
             onPressed: () {
+              final removed = Map<String, dynamic>.from(item);
+              final removedIndex = _items.indexOf(item);
               setState(() => _items.remove(item));
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Item ${item['name']} dihapus.'),
                   backgroundColor: AppTheme.statusRejected,
+                  action: SnackBarAction(
+                    label: 'URUNG',
+                    textColor: Colors.white,
+                    onPressed: () {
+                      setState(() {
+                        if (removedIndex >= 0 &&
+                            removedIndex <= _items.length) {
+                          _items.insert(removedIndex, removed);
+                        } else {
+                          _items.add(removed);
+                        }
+                      });
+                    },
+                  ),
                 ),
               );
             },
@@ -417,6 +554,93 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
     );
   }
 
+  // ─────────────────────────── QR scanner sheet ───────────────────────────
+  void _showQRScanner() {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('Scan QR Item',
+                style:
+                    TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text('Arahkan kamera ke barcode/QR pada label item.',
+                style:
+                    TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            const SizedBox(height: 18),
+            Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: AppTheme.primary.withOpacity(0.3), width: 2),
+              ),
+              child: const Center(
+                child: Icon(Icons.qr_code_scanner_rounded,
+                    color: AppTheme.primary, size: 80),
+              ),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  // Demo: cari item pertama
+                  if (_items.isNotEmpty) {
+                    _showItemDetail(_items.first);
+                  }
+                },
+                icon: const Icon(Icons.check_circle_rounded, size: 18),
+                label: const Text('Simulasi Pemindaian'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openStockCheck() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const StockCheckPage()),
+    );
+  }
+
+  void _openMonthlyUpdate() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MonthlyStockUpdatePage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -428,8 +652,19 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Cek Stok Semua',
+            icon: const Icon(Icons.fact_check_rounded),
+            onPressed: _openStockCheck,
+          ),
+          IconButton(
+            tooltip: 'Update Bulanan',
+            icon: const Icon(Icons.edit_calendar_rounded),
+            onPressed: _openMonthlyUpdate,
+          ),
+          IconButton(
+            tooltip: 'Scan QR',
             icon: const Icon(Icons.qr_code_scanner_rounded),
-            onPressed: () {},
+            onPressed: _showQRScanner,
           ),
         ],
       ),
@@ -442,229 +677,397 @@ class _ItemManagementPageState extends State<ItemManagementPage> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
       ),
-      body: Column(
-        children: [
-          // Search + filter
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _searchCtrl,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: 'Cari nama atau kode item…',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: _searchCtrl.text.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close_rounded,
-                                color: AppTheme.primary, size: 18),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() {});
-                            },
-                          ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        color: AppTheme.primary,
+        child: Column(
+          children: [
+            // Search + filter
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchCtrl,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Cari nama atau kode item…',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      suffixIcon: _searchCtrl.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.close_rounded,
+                                  color: AppTheme.primary, size: 18),
+                              onPressed: () {
+                                _searchCtrl.clear();
+                                setState(() {});
+                              },
+                            ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 36,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _categories.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, i) {
-                      final cat = _categories[i];
-                      final selected = _category == cat;
-                      return GestureDetector(
-                        onTap: () => setState(() => _category = cat),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? AppTheme.primary
-                                : AppTheme.background,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 36,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _categories.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, i) {
+                        final cat = _categories[i];
+                        final selected = _category == cat;
+                        final count = _categoryCount(cat);
+                        return GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _category = cat);
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
                               color: selected
                                   ? AppTheme.primary
-                                  : AppTheme.primaryLight.withOpacity(0.3),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Text(
-                            cat,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: selected
-                                  ? Colors.white
-                                  : AppTheme.primary,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: Colors.grey.shade100),
-
-          // List items
-          Expanded(
-            child: _filtered.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.inventory_2_rounded,
-                            size: 60, color: Colors.grey.shade300),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Tidak ada item ditemukan',
-                          style: TextStyle(
-                            color: Colors.grey.shade400,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.separated(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 90),
-                    itemCount: _filtered.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, i) {
-                      final it = _filtered[i];
-                      final stock = it['stock'] as int;
-                      final min = it['min'] as int;
-                      final stColor = _stockColor(stock, min);
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primary.withOpacity(0.06),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 50,
-                              height: 50,
-                              decoration: BoxDecoration(
-                                gradient: AppTheme.primaryGradient,
-                                borderRadius: BorderRadius.circular(14),
+                                  : AppTheme.background,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: selected
+                                    ? AppTheme.primary
+                                    : AppTheme.primaryLight
+                                        .withOpacity(0.3),
+                                width: 1.5,
                               ),
-                              child: Center(
-                                child: Text(
-                                  it['id'] as String,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  cat,
+                                  style: TextStyle(
                                     fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: selected
+                                        ? Colors.white
+                                        : AppTheme.primary,
                                   ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    it['name'] as String,
-                                    style: const TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppTheme.textPrimary,
-                                    ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? Colors.white.withOpacity(0.25)
+                                        : AppTheme.primary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    '${it['category']} · ${it['location']}',
+                                  child: Text(
+                                    '$count',
                                     style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: selected
+                                          ? Colors.white
+                                          : AppTheme.primary,
                                     ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: stColor.withOpacity(0.12),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          '$stock ${it['unit']} · ${_stockLabel(stock, min)}',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w800,
-                                            color: stColor,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            PopupMenuButton<String>(
-                              icon: Icon(Icons.more_vert_rounded,
-                                  color: Colors.grey.shade500),
-                              onSelected: (v) {
-                                if (v == 'edit') _showItemForm(edit: it);
-                                if (v == 'delete') _confirmDelete(it);
-                              },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(
-                                  value: 'edit',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit_outlined,
-                                          color: AppTheme.primary, size: 18),
-                                      SizedBox(width: 10),
-                                      Text('Edit Item'),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.delete_outline,
-                                          color: AppTheme.statusRejected,
-                                          size: 18),
-                                      SizedBox(width: 10),
-                                      Text('Hapus Item'),
-                                    ],
                                   ),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      );
-                    },
+                          ),
+                        );
+                      },
+                    ),
                   ),
-          ),
-        ],
+                ],
+              ),
+            ),
+            Divider(height: 1, color: Colors.grey.shade100),
+
+            // List items
+            Expanded(
+              child: _filtered.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.inventory_2_rounded,
+                              size: 60, color: Colors.grey.shade300),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Tidak ada item ditemukan',
+                            style: TextStyle(
+                              color: Colors.grey.shade400,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics()),
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 90),
+                      itemCount: _filtered.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, i) {
+                        final it = _filtered[i];
+                        final stock = it['stock'] as int;
+                        final min = it['min'] as int;
+                        final stColor = _stockColor(stock, min);
+                        return Dismissible(
+                          key: ValueKey(it['id']),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: AppTheme.statusRejected,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Icon(Icons.delete_rounded,
+                                color: Colors.white),
+                          ),
+                          confirmDismiss: (_) async {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                title: const Text('Hapus Item?'),
+                                content: Text('Hapus ${it['name']}?'),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child: const Text('Batal',
+                                          style: TextStyle(
+                                              color: AppTheme.primary))),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          AppTheme.statusRejected,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    onPressed: () =>
+                                        Navigator.pop(ctx, true),
+                                    child: const Text('Hapus'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            return ok ?? false;
+                          },
+                          onDismissed: (_) {
+                            final removed = Map<String, dynamic>.from(it);
+                            final removedIdx = _items.indexOf(it);
+                            setState(() => _items.remove(it));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content:
+                                    Text('Item ${it['name']} dihapus.'),
+                                backgroundColor: AppTheme.statusRejected,
+                                action: SnackBarAction(
+                                  label: 'URUNG',
+                                  textColor: Colors.white,
+                                  onPressed: () {
+                                    setState(() {
+                                      if (removedIdx >= 0 &&
+                                          removedIdx <= _items.length) {
+                                        _items.insert(
+                                            removedIdx, removed);
+                                      } else {
+                                        _items.add(removed);
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                          child: Material(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            child: InkWell(
+                              onTap: () => _showItemDetail(it),
+                              onLongPress: () {
+                                HapticFeedback.mediumImpact();
+                                _showItemForm(edit: it);
+                              },
+                              borderRadius: BorderRadius.circular(16),
+                              splashColor: stColor.withOpacity(0.12),
+                              child: Ink(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          AppTheme.primary.withOpacity(0.06),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 50,
+                                      height: 50,
+                                      decoration: BoxDecoration(
+                                        gradient: AppTheme.primaryGradient,
+                                        borderRadius:
+                                            BorderRadius.circular(14),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          it['id'] as String,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            it['name'] as String,
+                                            style: const TextStyle(
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppTheme.textPrimary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            '${it['category']} · ${it['location']}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Row(
+                                            children: [
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: stColor
+                                                      .withOpacity(0.12),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          6),
+                                                ),
+                                                child: Text(
+                                                  '$stock ${it['unit']} · '
+                                                  '${_stockLabel(stock, min)}',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight:
+                                                        FontWeight.w800,
+                                                    color: stColor,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuButton<String>(
+                                      icon: Icon(Icons.more_vert_rounded,
+                                          color: Colors.grey.shade500),
+                                      onSelected: (v) {
+                                        if (v == 'edit') {
+                                          _showItemForm(edit: it);
+                                        }
+                                        if (v == 'delete') {
+                                          _confirmDelete(it);
+                                        }
+                                        if (v == 'check') {
+                                          _openStockCheck();
+                                        }
+                                        if (v == 'monthly') {
+                                          _openMonthlyUpdate();
+                                        }
+                                      },
+                                      itemBuilder: (_) => const [
+                                        PopupMenuItem(
+                                          value: 'edit',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.edit_outlined,
+                                                  color: AppTheme.primary,
+                                                  size: 18),
+                                              SizedBox(width: 10),
+                                              Text('Edit Item'),
+                                            ],
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'check',
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                  Icons.fact_check_rounded,
+                                                  color: AppTheme.primary,
+                                                  size: 18),
+                                              SizedBox(width: 10),
+                                              Text('Cek Semua Stok'),
+                                            ],
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'monthly',
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                  Icons
+                                                      .edit_calendar_rounded,
+                                                  color: AppTheme.primary,
+                                                  size: 18),
+                                              SizedBox(width: 10),
+                                              Text('Update Bulanan'),
+                                            ],
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'delete',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.delete_outline,
+                                                  color: AppTheme
+                                                      .statusRejected,
+                                                  size: 18),
+                                              SizedBox(width: 10),
+                                              Text('Hapus Item'),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

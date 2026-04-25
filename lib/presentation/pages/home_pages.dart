@@ -9,7 +9,12 @@ import 'app_theme.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AdminHomePage extends StatefulWidget {
-  const AdminHomePage({super.key});
+  final void Function(int) onNavigate;
+
+  const AdminHomePage({
+    super.key,
+    required this.onNavigate,
+  });
 
   @override
   State<AdminHomePage> createState() => _AdminHomePageState();

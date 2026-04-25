@@ -1,13 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'app_theme.dart';
+import 'stock_check_pages.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Admin Profile — Versi admin: identitas admin, manajemen user, pengaturan
-// gudang, dan menu khusus admin (audit log, backup, dll).
+// Admin Profile — Identitas admin, pengaturan sistem, dan menu administrasi.
+//
+// Versi terhubung antar-halaman:
+//   • Optional `onNavigate(int tabIndex)` untuk lompat tab (0 Beranda,
+//     1 Persetujuan, 2 Inventaris, 3 Laporan, 4 Profil).
+//   • "Pintasan Admin" row di atas: Cek Stok, Update Bulanan, Persetujuan,
+//     Inventaris.
+//   • Menu Audit Log buka bottom sheet log (demo).
+//   • Menu Tentang Aplikasi buka dialog versi.
+//   • Menu lainnya tetap menampilkan dialog "dalam pengembangan".
+//   • Avatar tap untuk edit profil dengan animasi & pulse.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AdminProfilePage extends StatefulWidget {
-  const AdminProfilePage({super.key});
+  final void Function(int tabIndex)? onNavigate;
+
+  const AdminProfilePage({super.key, this.onNavigate});
 
   @override
   State<AdminProfilePage> createState() => _AdminProfilePageState();
@@ -84,6 +97,293 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       'key': 'about',
     },
   ];
+
+  // ─────────────────────────── Routing & cross-nav ───────────────────────────
+  void _goToTab(int tab, String fallbackMsg) {
+    HapticFeedback.selectionClick();
+    if (widget.onNavigate != null) {
+      widget.onNavigate!(tab);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(fallbackMsg),
+          backgroundColor: AppTheme.primary,
+        ),
+      );
+    }
+  }
+
+  void _openStockCheck() {
+    HapticFeedback.selectionClick();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const StockCheckPage()),
+    );
+  }
+
+  void _openMonthlyUpdate() {
+    HapticFeedback.selectionClick();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MonthlyStockUpdatePage()),
+    );
+  }
+
+  void _onMenuTap(Map<String, dynamic> m) {
+    final key = m['key'] as String;
+    switch (key) {
+      case 'audit':
+        _showAuditLogSheet();
+        break;
+      case 'about':
+        _showAboutDialog();
+        break;
+      default:
+        _showInDevDialog(m['title'] as String);
+    }
+  }
+
+  void _showAuditLogSheet() {
+    HapticFeedback.selectionClick();
+    final logs = [
+      {
+        'time': '08:42',
+        'user': 'Bagas Pratama',
+        'action': 'Mengirim permintaan REQ-20260420-001',
+        'icon': Icons.send_rounded,
+        'color': AppTheme.primary,
+      },
+      {
+        'time': '09:01',
+        'user': 'Anda',
+        'action': 'Login ke panel admin',
+        'icon': Icons.login_rounded,
+        'color': AppTheme.statusApproved,
+      },
+      {
+        'time': '09:18',
+        'user': 'Anda',
+        'action': 'Menyetujui REQ-20260420-002 (24 unit filter)',
+        'icon': Icons.check_circle_rounded,
+        'color': AppTheme.statusApproved,
+      },
+      {
+        'time': '10:05',
+        'user': 'Anda',
+        'action': 'Update stok bulanan kategori "Pompa"',
+        'icon': Icons.edit_calendar_rounded,
+        'color': AppTheme.primary,
+      },
+      {
+        'time': '10:34',
+        'user': 'Dewi Lestari',
+        'action': 'Menambah item baru: Seal Mekanis 25mm',
+        'icon': Icons.add_box_rounded,
+        'color': AppTheme.statusInfo,
+      },
+      {
+        'time': '11:21',
+        'user': 'Anda',
+        'action': 'Menolak REQ-20260419-008 (alasan: anggaran)',
+        'icon': Icons.cancel_rounded,
+        'color': AppTheme.statusRejected,
+      },
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.92,
+        expand: false,
+        builder: (ctx, scroll) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.fact_check_outlined,
+                        color: AppTheme.primary, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Audit Log Hari Ini',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  'Aktivitas terbaru pengguna & admin (demo).',
+                  style:
+                      TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ),
+              Divider(height: 1, color: Colors.grey.shade100),
+              Expanded(
+                child: ListView.separated(
+                  controller: scroll,
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                  itemCount: logs.length,
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 18, color: Colors.grey.shade100),
+                  itemBuilder: (ctx, i) {
+                    final l = logs[i];
+                    return Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: (l['color'] as Color).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(l['icon'] as IconData,
+                              color: l['color'] as Color, size: 18),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                l['action'] as String,
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${l['user']} · ${l['time']}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAboutDialog() {
+    HapticFeedback.selectionClick();
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 28, 22, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.primary.withOpacity(0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.admin_panel_settings_rounded,
+                    color: Colors.white, size: 36),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'GudangPro Admin',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              const Text(
+                'Versi 1.0.0  •  Build 2026.04',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF607D8B),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Sistem manajemen inventaris IPAL untuk admin gudang. '
+                'Pantau stok, setujui permintaan, dan kelola laporan dari satu tempat.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: Colors.grey.shade700,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Tutup',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   void _showInDevDialog(String name) {
     showDialog(
@@ -165,6 +465,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   }
 
   void _showEditProfileSheet() {
+    HapticFeedback.selectionClick();
     final nameCtrl = TextEditingController(text: _adminName);
     final phoneCtrl = TextEditingController(text: _adminPhone);
     final officeCtrl = TextEditingController(text: _adminOffice);
@@ -346,6 +647,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   }
 
   void _showLogoutDialog() {
+    HapticFeedback.mediumImpact();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -518,6 +820,53 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ─── Pintasan Admin ─────────────────────────────────
+                  _sectionTitle('Pintasan Admin'),
+                  const SizedBox(height: 10),
+                  _cardContainer(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _shortcut(
+                              icon: Icons.fact_check_rounded,
+                              label: 'Cek Stok',
+                              onTap: _openStockCheck,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _shortcut(
+                              icon: Icons.edit_calendar_rounded,
+                              label: 'Update\nBulanan',
+                              onTap: _openMonthlyUpdate,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _shortcut(
+                              icon: Icons.fact_check_outlined,
+                              label: 'Persetujuan',
+                              onTap: () => _goToTab(1,
+                                  'Buka tab "Persetujuan" di bawah.'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _shortcut(
+                              icon: Icons.inventory_2_outlined,
+                              label: 'Inventaris',
+                              onTap: () => _goToTab(2,
+                                  'Buka tab "Inventaris" di bawah.'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
                   _sectionTitle('Pengaturan Sistem'),
                   const SizedBox(height: 10),
                   _cardContainer(
@@ -530,8 +879,19 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                           subtitle:
                               'Sementara nonaktifkan akses untuk semua user',
                           value: _maintenanceMode,
-                          onChanged: (v) =>
-                              setState(() => _maintenanceMode = v),
+                          onChanged: (v) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _maintenanceMode = v);
+                            if (v) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Mode Maintenance aktif. Pengguna tidak dapat mengakses sistem.'),
+                                  backgroundColor: AppTheme.statusPending,
+                                ),
+                              );
+                            }
+                          },
                         ),
                         Divider(
                             height: 1,
@@ -543,8 +903,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                           title: 'Auto-Approve Permintaan Kecil',
                           subtitle: 'Setujui otomatis permintaan ≤ 5 unit',
                           value: _autoApproveLow,
-                          onChanged: (v) =>
-                              setState(() => _autoApproveLow = v),
+                          onChanged: (v) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _autoApproveLow = v);
+                          },
                         ),
                         Divider(
                             height: 1,
@@ -557,8 +919,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                           subtitle:
                               'Kirim ringkasan harian otomatis ke email admin',
                           value: _emailReport,
-                          onChanged: (v) =>
-                              setState(() => _emailReport = v),
+                          onChanged: (v) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _emailReport = v);
+                          },
                         ),
                       ],
                     ),
@@ -580,8 +944,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                               subtitle: m['subtitle'] as String,
                               isFirst: idx == 0,
                               isLast: idx == _menuItems.length - 1,
-                              onTap: () =>
-                                  _showInDevDialog(m['title'] as String),
+                              onTap: () => _onMenuTap(m),
                             ),
                             if (idx < _menuItems.length - 1)
                               Divider(
@@ -639,6 +1002,50 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _shortcut({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: AppTheme.primaryPale.withOpacity(0.4),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        splashColor: AppTheme.primary.withOpacity(0.15),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+          child: Column(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: Colors.white, size: 18),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primaryDark,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

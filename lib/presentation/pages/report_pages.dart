@@ -1,14 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'app_theme.dart';
+import 'stock_check_pages.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reports — Halaman laporan & analitik gudang untuk admin.
-// Menampilkan ringkasan harian/mingguan/bulanan, distribusi kategori,
-// dan tombol ekspor (PDF / Excel).
+//
+// Versi terhubung antar-halaman:
+//   • Pintasan cepat di atas: Cek Stok, Update Bulanan, Persetujuan,
+//     Kelola Item.
+//   • Kartu ringkasan dapat diketuk:
+//       - Stok Kritis  → StockCheckPage filter "Habis/Rendah"
+//       - Disetujui    → tab Persetujuan (lewat onNavigate)
+//       - Ditolak      → tab Persetujuan
+//       - Total Trans. → toast detail
+//   • "Item Paling Banyak Diminta" tap → navigasi ke Kelola Item.
+//   • Tombol Ekspor: PDF / Excel / CSV.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ReportsPage extends StatefulWidget {
-  const ReportsPage({super.key});
+  final void Function(int tabIndex)? onNavigate;
+
+  const ReportsPage({super.key, this.onNavigate});
 
   @override
   State<ReportsPage> createState() => _ReportsPageState();
@@ -72,7 +85,39 @@ class _ReportsPageState extends State<ReportsPage> {
     {'name': 'MCB 3 Phase 16A', 'qty': 42, 'unit': 'unit'},
   ];
 
+  // ─────────────────────────── Navigasi helpers ───────────────────────────
+  void _goToTab(int tab, String fallbackMsg) {
+    HapticFeedback.selectionClick();
+    if (widget.onNavigate != null) {
+      widget.onNavigate!(tab);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(fallbackMsg),
+          backgroundColor: AppTheme.primary,
+        ),
+      );
+    }
+  }
+
+  void _openStockCheck() {
+    HapticFeedback.selectionClick();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const StockCheckPage()),
+    );
+  }
+
+  void _openMonthlyUpdate() {
+    HapticFeedback.selectionClick();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MonthlyStockUpdatePage()),
+    );
+  }
+
   void _showExportSheet() {
+    HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -107,7 +152,7 @@ class _ReportsPageState extends State<ReportsPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Pilih format yang ingin diunduh',
+              'Pilih format yang ingin diunduh (periode: ${_periods[_period]})',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 18),
@@ -202,6 +247,115 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
+  void _showTopItemSheet(Map<String, dynamic> it, int rank) {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                    child: Text(
+                      '#$rank',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    it['name'] as String,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Total diminta: ${it['qty']} ${it['unit']}\n'
+              'Periode: ${_periods[_period]}',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade700,
+                  height: 1.5),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(color: AppTheme.primary),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _openStockCheck();
+                    },
+                    icon: const Icon(Icons.fact_check_rounded, size: 18),
+                    label: const Text('Cek Stok'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _goToTab(2,
+                          'Buka tab "Inventaris" untuk mengelola item ini.');
+                    },
+                    icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                    label: const Text('Kelola'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final maxBar = _bars
@@ -217,53 +371,124 @@ class _ReportsPageState extends State<ReportsPage> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Ekspor',
             icon: const Icon(Icons.download_rounded),
             onPressed: _showExportSheet,
           ),
         ],
       ),
       body: ListView(
-        physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        physics: const BouncingScrollPhysics(),
         children: [
+          // ─── Pintasan Cepat ────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primary.withOpacity(0.08),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.dashboard_customize_rounded,
+                        color: AppTheme.primary, size: 18),
+                    SizedBox(width: 6),
+                    Text(
+                      'Pintasan Cepat',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _quickAction(
+                        icon: Icons.fact_check_rounded,
+                        label: 'Cek Stok',
+                        onTap: _openStockCheck,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _quickAction(
+                        icon: Icons.edit_calendar_rounded,
+                        label: 'Update Bulanan',
+                        onTap: _openMonthlyUpdate,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _quickAction(
+                        icon: Icons.fact_check_outlined,
+                        label: 'Persetujuan',
+                        onTap: () => _goToTab(
+                            1, 'Buka tab "Persetujuan" di bawah.'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _quickAction(
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Inventaris',
+                        onTap: () => _goToTab(
+                            2, 'Buka tab "Inventaris" di bawah.'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // Period selector
           Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppTheme.primaryPale.withOpacity(0.4),
               borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primary.withOpacity(0.06),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
             child: Row(
               children: _periods.asMap().entries.map((e) {
                 final selected = _period == e.key;
                 return Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() => _period = e.key),
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _period = e.key);
+                    },
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
+                      duration: const Duration(milliseconds: 220),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: selected
-                            ? AppTheme.primary
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(11),
+                        color: selected ? AppTheme.primary : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        e.value,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: selected
-                              ? Colors.white
-                              : AppTheme.primary,
+                      child: Center(
+                        child: Text(
+                          e.value,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: selected
+                                ? Colors.white
+                                : AppTheme.primaryDark,
+                          ),
                         ),
                       ),
                     ),
@@ -285,6 +510,16 @@ class _ReportsPageState extends State<ReportsPage> {
                   color: AppTheme.primary,
                   trend: '+12%',
                   trendUp: true,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            '147 transaksi pada periode ini. Buka Persetujuan untuk detail.'),
+                        backgroundColor: AppTheme.primary,
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(width: 10),
@@ -296,6 +531,8 @@ class _ReportsPageState extends State<ReportsPage> {
                   color: AppTheme.statusApproved,
                   trend: '+8%',
                   trendUp: true,
+                  onTap: () => _goToTab(
+                      1, 'Buka tab "Persetujuan" → filter Disetujui.'),
                 ),
               ),
             ],
@@ -311,6 +548,8 @@ class _ReportsPageState extends State<ReportsPage> {
                   color: AppTheme.statusRejected,
                   trend: '-5%',
                   trendUp: false,
+                  onTap: () => _goToTab(
+                      1, 'Buka tab "Persetujuan" → filter Ditolak.'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -322,6 +561,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   color: AppTheme.statusPending,
                   trend: '+2',
                   trendUp: false,
+                  onTap: _openStockCheck,
                 ),
               ),
             ],
@@ -343,47 +583,64 @@ class _ReportsPageState extends State<ReportsPage> {
                   final total = inVal + outVal;
                   final ratio = total / maxBar;
                   return Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        SizedBox(
-                          height: 130,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Container(
-                                width: 14,
-                                height: 130 *
-                                    ratio *
-                                    (inVal / (total == 0 ? 1 : total)),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.statusApproved,
-                                  borderRadius: BorderRadius.vertical(
-                                      top: Radius.circular(4)),
-                                ),
-                              ),
-                              Container(
-                                width: 14,
-                                height: 130 *
-                                    ratio *
-                                    (outVal / (total == 0 ? 1 : total)),
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.statusRejected,
-                                ),
-                              ),
-                            ],
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                '${b['day']}: $inVal masuk · $outVal keluar'),
+                            backgroundColor: AppTheme.primary,
+                            duration: const Duration(seconds: 2),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          b['day'] as String,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey.shade600,
-                            fontWeight: FontWeight.w600,
+                        );
+                      },
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          SizedBox(
+                            height: 130,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                AnimatedContainer(
+                                  duration:
+                                      const Duration(milliseconds: 400),
+                                  width: 14,
+                                  height: 130 *
+                                      ratio *
+                                      (inVal / (total == 0 ? 1 : total)),
+                                  decoration: const BoxDecoration(
+                                    color: AppTheme.statusApproved,
+                                    borderRadius: BorderRadius.vertical(
+                                        top: Radius.circular(4)),
+                                  ),
+                                ),
+                                AnimatedContainer(
+                                  duration:
+                                      const Duration(milliseconds: 400),
+                                  width: 14,
+                                  height: 130 *
+                                      ratio *
+                                      (outVal / (total == 0 ? 1 : total)),
+                                  decoration: const BoxDecoration(
+                                    color: AppTheme.statusRejected,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 6),
+                          Text(
+                            b['day'] as String,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }).toList(),
@@ -406,43 +663,58 @@ class _ReportsPageState extends State<ReportsPage> {
             subtitle: 'Permintaan barang berdasarkan kategori',
             child: Column(
               children: _categories.map((c) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            c['name'] as String,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${c['count']} req',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+                return InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            '${c['name']}: ${c['count']} permintaan (${(c['percent'] * 100).toStringAsFixed(0)}%)'),
+                        backgroundColor: c['color'] as Color,
+                        duration: const Duration(seconds: 2),
                       ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: c['percent'] as double,
-                          minHeight: 8,
-                          backgroundColor: AppTheme.primaryPale.withOpacity(0.5),
-                          color: c['color'] as Color,
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              c['name'] as String,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '${c['count']} req',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: c['percent'] as double,
+                            minHeight: 8,
+                            backgroundColor:
+                                AppTheme.primaryPale.withOpacity(0.5),
+                            color: c['color'] as Color,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }).toList(),
@@ -453,60 +725,133 @@ class _ReportsPageState extends State<ReportsPage> {
           // Top requested items
           _sectionCard(
             title: 'Item Paling Banyak Diminta',
-            subtitle: 'Top 5 berdasarkan kuantitas',
+            subtitle: 'Top 5 — ketuk untuk aksi',
             child: Column(
               children: _topItems.asMap().entries.map((e) {
                 final idx = e.key;
                 final it = e.value;
-                return Padding(
-                  padding: EdgeInsets.only(
-                      bottom: idx == _topItems.length - 1 ? 0 : 12),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          gradient: AppTheme.primaryGradient,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${idx + 1}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11,
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _showTopItemSheet(it, idx + 1),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              gradient: AppTheme.primaryGradient,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${idx + 1}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          it['name'] as String,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textPrimary,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              it['name'] as String,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
                           ),
-                        ),
+                          Text(
+                            '${it['qty']} ${it['unit']}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.chevron_right_rounded,
+                              color: Colors.grey.shade400, size: 18),
+                        ],
                       ),
-                      Text(
-                        '${it['qty']} ${it['unit']}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.primary,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 );
               }).toList(),
             ),
           ),
+          const SizedBox(height: 16),
+          // Big export button
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              onPressed: _showExportSheet,
+              icon: const Icon(Icons.download_rounded),
+              label: const Text(
+                'Ekspor Laporan Lengkap',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _quickAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: AppTheme.primaryPale.withOpacity(0.4),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+          child: Column(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: Colors.white, size: 18),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primaryDark,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -518,88 +863,97 @@ class _ReportsPageState extends State<ReportsPage> {
     required Color color,
     required String trend,
     required bool trendUp,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 18),
+        onTap: onTap,
+        splashColor: color.withOpacity(0.12),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: (trendUp
-                          ? AppTheme.statusApproved
-                          : AppTheme.statusRejected)
-                      .withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(6),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: color, size: 18),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (trendUp
+                              ? AppTheme.statusApproved
+                              : AppTheme.statusRejected)
+                          .withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          trendUp
+                              ? Icons.arrow_upward_rounded
+                              : Icons.arrow_downward_rounded,
+                          size: 10,
+                          color: trendUp
+                              ? AppTheme.statusApproved
+                              : AppTheme.statusRejected,
+                        ),
+                        Text(
+                          trend,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: trendUp
+                                ? AppTheme.statusApproved
+                                : AppTheme.statusRejected,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.textPrimary,
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      trendUp
-                          ? Icons.arrow_upward_rounded
-                          : Icons.arrow_downward_rounded,
-                      size: 10,
-                      color: trendUp
-                          ? AppTheme.statusApproved
-                          : AppTheme.statusRejected,
-                    ),
-                    Text(
-                      trend,
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: trendUp
-                            ? AppTheme.statusApproved
-                            : AppTheme.statusRejected,
-                      ),
-                    ),
-                  ],
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

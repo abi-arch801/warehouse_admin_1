@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app_theme.dart';
+import 'stock_check_pages.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Approval Page — Admin meninjau permintaan barang dari user.
@@ -13,7 +14,9 @@ import 'app_theme.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ApprovalPage extends StatefulWidget {
-  const ApprovalPage({super.key});
+  final void Function(int tabIndex)? onNavigate;
+
+  const ApprovalPage({super.key, this.onNavigate});
 
   @override
   State<ApprovalPage> createState() => _ApprovalPageState();
@@ -1447,8 +1450,45 @@ class _ApprovalPageState extends State<ApprovalPage>
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.search_rounded),
-            onPressed: () {},
+            tooltip: 'Cek Stok',
+            icon: const Icon(Icons.fact_check_rounded),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const StockCheckPage()),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Update Bulanan',
+            icon: const Icon(Icons.edit_calendar_rounded),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const MonthlyStockUpdatePage()),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Inventaris',
+            icon: const Icon(Icons.inventory_2_outlined),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              if (widget.onNavigate != null) {
+                widget.onNavigate!(2);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Buka tab "Inventaris" di bawah.'),
+                    backgroundColor: AppTheme.primary,
+                  ),
+                );
+              }
+            },
           ),
         ],
       ),
