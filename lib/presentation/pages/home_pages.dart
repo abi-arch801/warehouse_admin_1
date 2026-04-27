@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'app_theme.dart';
 import 'approval_pages.dart';
 import 'stock_check_pages.dart';
+import 'profile_pages.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin Home — Ringkasan operasional gudang untuk admin.
@@ -221,12 +222,31 @@ class _AdminHomePageState extends State<AdminHomePage>
       builder: (ctx) => _ProfilePeekSheet(
         name: _adminName,
         role: _adminRole,
+        onOpenProfile: () {
+          Navigator.pop(ctx);
+          _goToProfileTab(focus: 'profile');
+        },
+        onOpenSettings: () {
+          Navigator.pop(ctx);
+          _goToProfileTab(focus: 'settings');
+        },
         onLogout: () {
           Navigator.pop(ctx);
           _snack('Keluar dari akun...', color: Colors.redAccent);
         },
       ),
     );
+  }
+
+  /// Pindah ke tab Profil (index 4) sambil mengeset seksi yang ingin
+  /// langsung di-scroll oleh halaman tujuan.
+  void _goToProfileTab({required String focus}) {
+    kProfileFocus.value = focus;
+    if (widget.onNavigate != null) {
+      widget.onNavigate!(4);
+    } else {
+      _snack('Buka tab Profil untuk melihat detail');
+    }
   }
 
   void _openNotifications() {
@@ -1351,11 +1371,15 @@ class _KpiDetailSheet extends StatelessWidget {
 class _ProfilePeekSheet extends StatelessWidget {
   final String name;
   final String role;
+  final VoidCallback onOpenProfile;
+  final VoidCallback onOpenSettings;
   final VoidCallback onLogout;
 
   const _ProfilePeekSheet({
     required this.name,
     required this.role,
+    required this.onOpenProfile,
+    required this.onOpenSettings,
     required this.onLogout,
   });
 
@@ -1383,7 +1407,7 @@ class _ProfilePeekSheet extends StatelessWidget {
             Center(
               child: CircleAvatar(
                 radius: 36,
-                backgroundColor: AppTheme.primary.withOpacity(0.15),
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.15),
                 child: const Text(
                   'AF',
                   style: TextStyle(
@@ -1413,28 +1437,14 @@ class _ProfilePeekSheet extends StatelessWidget {
             _ProfileTile(
               icon: Icons.person_rounded,
               label: 'Profil Saya',
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Membuka profil'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
+              subtitle: 'Lihat & ubah identitas admin',
+              onTap: onOpenProfile,
             ),
             _ProfileTile(
               icon: Icons.settings_rounded,
               label: 'Pengaturan',
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Membuka pengaturan'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
+              subtitle: 'Mode maintenance, auto-approve, laporan',
+              onTap: onOpenSettings,
             ),
             _ProfileTile(
               icon: Icons.logout_rounded,
@@ -1452,12 +1462,14 @@ class _ProfilePeekSheet extends StatelessWidget {
 class _ProfileTile extends StatelessWidget {
   final IconData icon;
   final String label;
+  final String? subtitle;
   final Color? color;
   final VoidCallback onTap;
   const _ProfileTile({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.subtitle,
     this.color,
   });
 
@@ -1474,15 +1486,37 @@ class _ProfileTile extends StatelessWidget {
               const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
           child: Row(
             children: [
-              Icon(icon, color: c),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: c.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: c, size: 20),
+              ),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: color ?? AppTheme.textPrimary,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: color ?? AppTheme.textPrimary,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const Icon(Icons.chevron_right_rounded, color: Colors.grey),

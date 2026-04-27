@@ -4,6 +4,20 @@ import 'app_theme.dart';
 import 'stock_check_pages.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Cross-page focus untuk halaman Profil.
+//
+// Halaman lain (mis. popup profil di Beranda) cukup mengeset nilai di sini
+// lalu pindah ke tab Profil — halaman akan otomatis scroll ke seksi yang
+// diminta. Nilai dikonsumsi (di-reset ke null) setelah scroll selesai.
+//
+// Nilai yang dikenal:
+//   • 'profile'  — header identitas (paling atas)
+//   • 'settings' — bagian "Pengaturan Sistem"
+//   • 'menu'     — bagian "Manajemen & Administrasi"
+// ─────────────────────────────────────────────────────────────────────────────
+final ValueNotifier<String?> kProfileFocus = ValueNotifier<String?>(null);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Admin Profile — Identitas admin, pengaturan sistem, dan menu administrasi.
 //
 // Versi terhubung antar-halaman:
@@ -20,7 +34,11 @@ import 'stock_check_pages.dart';
 class AdminProfilePage extends StatefulWidget {
   final void Function(int tabIndex)? onNavigate;
 
-  const AdminProfilePage({super.key, this.onNavigate});
+  /// Seksi yang ingin ditampilkan saat halaman dibuka.
+  /// Lihat dokumentasi `kProfileFocus` di atas.
+  final String? initialFocus;
+
+  const AdminProfilePage({super.key, this.onNavigate, this.initialFocus});
 
   @override
   State<AdminProfilePage> createState() => _AdminProfilePageState();
@@ -30,6 +48,12 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   bool _maintenanceMode = false;
   bool _autoApproveLow = false;
   bool _emailReport = true;
+
+  // Controller + keys untuk men-scroll ke seksi tertentu saat dipanggil
+  // dari halaman lain (mis. popup profil di Beranda).
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _settingsKey = GlobalKey();
+  final GlobalKey _menuKey = GlobalKey();
 
   String _adminName = 'Ahmad Fauzi';
   String _adminPhone = '+62 813-9876-5432';
@@ -97,6 +121,68 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       'key': 'about',
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Bila halaman dibuka langsung dengan fokus tertentu, scroll setelah
+    // frame pertama.
+    if (widget.initialFocus != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToSection(widget.initialFocus!);
+      });
+    }
+    // Dengarkan perubahan focus dari halaman lain (mis. popup di Beranda).
+    kProfileFocus.addListener(_onProfileFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    kProfileFocus.removeListener(_onProfileFocusChanged);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onProfileFocusChanged() {
+    final focus = kProfileFocus.value;
+    if (focus == null || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToSection(focus);
+      // Konsumsi nilai supaya tidak men-trigger scroll berulang.
+      kProfileFocus.value = null;
+    });
+  }
+
+  void _scrollToSection(String section) {
+    if (!_scrollController.hasClients) return;
+    GlobalKey? key;
+    switch (section) {
+      case 'settings':
+        key = _settingsKey;
+        break;
+      case 'menu':
+        key = _menuKey;
+        break;
+      case 'profile':
+      default:
+        // Scroll ke paling atas (header identitas).
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeOutCubic,
+        );
+        return;
+    }
+
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      alignment: 0.05,
+    );
+  }
 
   // ─────────────────────────── Routing & cross-nav ───────────────────────────
   void _goToTab(int tab, String fallbackMsg) {
@@ -693,6 +779,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: CustomScrollView(
+        controller: _scrollController,
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverAppBar(
@@ -867,7 +954,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                   ),
 
                   const SizedBox(height: 20),
-                  _sectionTitle('Pengaturan Sistem'),
+                  KeyedSubtree(
+                    key: _settingsKey,
+                    child: _sectionTitle('Pengaturan Sistem'),
+                  ),
                   const SizedBox(height: 10),
                   _cardContainer(
                     child: Column(
@@ -928,7 +1018,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  _sectionTitle('Manajemen & Administrasi'),
+                  KeyedSubtree(
+                    key: _menuKey,
+                    child: _sectionTitle('Manajemen & Administrasi'),
+                  ),
                   const SizedBox(height: 10),
                   _cardContainer(
                     child: Column(
