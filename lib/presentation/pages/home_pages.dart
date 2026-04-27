@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app_theme.dart';
+import 'approval_pages.dart';
+import 'stock_check_pages.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin Home — Ringkasan operasional gudang untuk admin.
 // Berisi: greeting, KPI utama, alert stok rendah, antrian persetujuan,
 // dan aktivitas terbaru. Semua tombol interaktif.
+//
+// AdminHomePage menerima callback opsional `onNavigate(int tabIndex)` dari
+// dashboard. Tab index: 0 Beranda · 1 Persetujuan · 2 Inventaris ·
+// 3 Laporan · 4 Profil. Bila null, akan menampilkan snackbar petunjuk.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AdminHomePage extends StatefulWidget {
-  final void Function(int) onNavigate;
+  final void Function(int tabIndex)? onNavigate;
 
-  const AdminHomePage({
-    super.key,
-    required this.onNavigate,
-  });
+  const AdminHomePage({super.key, this.onNavigate});
 
   @override
   State<AdminHomePage> createState() => _AdminHomePageState();
@@ -28,79 +31,106 @@ class _AdminHomePageState extends State<AdminHomePage>
   static const _adminName = 'Ahmad Fauzi';
   static const _adminRole = 'Super Admin · Gudang IPAL Pusat';
 
-  // KPI ringkas
-  final List<Map<String, dynamic>> _kpis = const [
-    {
-      'label': 'Permintaan Pending',
-      'value': '14',
-      'icon': Icons.pending_actions_rounded,
-      'color': AppTheme.statusPending,
-      'tabIndex': 1,
-    },
-    {
-      'label': 'Disetujui Hari Ini',
-      'value': '32',
-      'icon': Icons.check_circle_rounded,
-      'color': AppTheme.statusApproved,
-      'tabIndex': 1,
-    },
-    {
-      'label': 'Stok Rendah',
-      'value': '7',
-      'icon': Icons.warning_amber_rounded,
-      'color': AppTheme.statusRejected,
-      'tabIndex': 2,
-    },
-    {
-      'label': 'Total Item',
-      'value': '180',
-      'icon': Icons.inventory_2_rounded,
-      'color': AppTheme.primary,
-      'tabIndex': 2,
-    },
-  ];
+  // KPI ringkas — data dihitung live dari halaman terkait sehingga selalu
+  // sinkron dengan persetujuan dan stok terbaru.
+  List<Map<String, dynamic>> get _kpis => [
+        {
+          'key': 'pending',
+          'label': 'Permintaan Pending',
+          'value': '${kPendingCount()}',
+          'icon': Icons.pending_actions_rounded,
+          'color': AppTheme.statusPending,
+        },
+        {
+          'key': 'approved',
+          'label': 'Disetujui',
+          'value': '${kApprovedCount()}',
+          'icon': Icons.check_circle_rounded,
+          'color': AppTheme.statusApproved,
+        },
+        {
+          'key': 'low_stock',
+          'label': 'Stok Rendah',
+          'value': '${kCriticalStockCount()}',
+          'icon': Icons.warning_amber_rounded,
+          'color': AppTheme.statusRejected,
+        },
+        {
+          'key': 'total_item',
+          'label': 'Total Item',
+          'value': '${kTotalStockItems()}',
+          'icon': Icons.inventory_2_rounded,
+          'color': AppTheme.primary,
+        },
+      ];
 
-  // Alert stok rendah
-  final List<Map<String, dynamic>> _lowStock = const [
-    {'name': 'Pompa Submersible 2 HP', 'code': 'P03', 'stock': 2, 'min': 5},
-    {'name': 'Membran RO 4040', 'code': 'F04', 'stock': 1, 'min': 4},
-    {'name': 'MCB 3 Phase 16A', 'code': 'K05', 'stock': 3, 'min': 10},
-    {'name': 'UV Sterilizer 11W', 'code': 'F28', 'stock': 0, 'min': 3},
-  ];
+  // Alert stok rendah — diambil live dari `kSharedStockItems` (halaman
+  // Cek Stok). Ditampilkan maksimal 4 item paling kritis.
+  List<Map<String, dynamic>> get _lowStock {
+    final items = kLowStockItems();
+    return items.take(4).map((it) {
+      return {
+        'name': it['name'],
+        'code': it['id'],
+        'stock': it['stock'],
+        'min': it['min'],
+      };
+    }).toList();
+  }
 
-  // Aktivitas terbaru
-  final List<Map<String, dynamic>> _recentActivity = const [
-    {
-      'type': 'approve',
-      'title': 'Permintaan disetujui',
-      'desc': 'REQ-20260420-001 · Pompa Submersible 7.5 kW',
-      'time': '5 menit lalu',
-    },
-    {
-      'type': 'restock',
-      'title': 'Restock masuk',
-      'desc': 'Media Karbon Aktif · 40 kg dari PT. Aquatech',
-      'time': '23 menit lalu',
-    },
-    {
-      'type': 'reject',
-      'title': 'Permintaan ditolak',
-      'desc': 'REQ-20260420-007 · alasan: stok tidak cukup',
-      'time': '1 jam lalu',
-    },
-    {
-      'type': 'user',
-      'title': 'User baru terdaftar',
-      'desc': 'Bagas Pratama (Operator IPAL)',
-      'time': '2 jam lalu',
-    },
-    {
-      'type': 'transfer',
-      'title': 'Transfer antar gudang',
-      'desc': 'Blower Roots 1 HP · 2 unit dari Gudang A → Gudang C',
-      'time': '3 jam lalu',
-    },
-  ];
+  // Aktivitas terbaru — disusun live dari permintaan yang sudah diproses
+  // (disetujui / ditolak) plus item stok yang habis. Tap kartu langsung
+  // membawa admin ke halaman terkait.
+  List<Map<String, dynamic>> get _recentActivity {
+    final acts = <Map<String, dynamic>>[];
+
+    // 1) Permintaan yang sudah diputuskan (terbaru di atas).
+    final processed = kSharedApprovalRequests
+        .where((r) =>
+            r['status'] == 'approved' ||
+            r['status'] == 'rejected' ||
+            r['status'] == 'partial')
+        .toList()
+      ..sort((a, b) =>
+          (b['date'] as String).compareTo(a['date'] as String));
+
+    for (final r in processed.take(3)) {
+      final status = r['status'] as String;
+      final items = (r['items'] as List).cast<Map<String, dynamic>>();
+      final firstName =
+          items.isNotEmpty ? items.first['name'] as String : '-';
+      final extra = items.length > 1 ? ' +${items.length - 1} lainnya' : '';
+      acts.add({
+        'type': status == 'rejected' ? 'reject' : 'approve',
+        'kind': 'request',
+        'refCode': r['code'],
+        'title': status == 'rejected'
+            ? 'Permintaan ditolak'
+            : (status == 'partial'
+                ? 'Permintaan disetujui sebagian'
+                : 'Permintaan disetujui'),
+        'desc': '${r['code']} · $firstName$extra',
+        'time': '${r['date']} · ${r['time']}',
+      });
+    }
+
+    // 2) Item stok yang habis / kritis (paling kritis di atas).
+    for (final it in kLowStockItems().take(2)) {
+      final stock = it['stock'] as int;
+      acts.add({
+        'type': stock == 0 ? 'reject' : 'restock',
+        'kind': 'low_stock',
+        'refCode': it['id'],
+        'title': stock == 0
+            ? 'Stok habis: ${it['name']}'
+            : 'Stok rendah: ${it['name']}',
+        'desc':
+            'Sisa $stock ${it['unit']} · minimum ${it['min']} · ${it['location']}',
+        'time': 'Perlu tindakan',
+      });
+    }
+    return acts;
+  }
 
   @override
   void initState() {
@@ -208,17 +238,172 @@ class _AdminHomePageState extends State<AdminHomePage>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => const _NotificationSheet(),
+      builder: (ctx) => _NotificationSheet(
+        items: _buildNotifications(),
+        onSelect: (n) {
+          Navigator.pop(ctx);
+          _handleNotificationTap(n);
+        },
+      ),
     );
+  }
+
+  /// Susun notifikasi live: pending approvals + stok kritis + permintaan
+  /// terbaru yang sudah diputuskan.
+  List<Map<String, dynamic>> _buildNotifications() {
+    final list = <Map<String, dynamic>>[];
+
+    final pending = kPendingCount();
+    if (pending > 0) {
+      list.add({
+        'kind': 'pending',
+        'icon': Icons.fact_check_rounded,
+        'color': AppTheme.statusPending,
+        'title': '$pending permintaan menunggu',
+        'sub': 'Tap untuk meninjau & menyetujui',
+        'time': 'Sekarang',
+      });
+    }
+
+    for (final it in kLowStockItems().take(3)) {
+      final stock = it['stock'] as int;
+      list.add({
+        'kind': 'low_stock',
+        'refCode': it['id'],
+        'icon': Icons.warning_amber_rounded,
+        'color': stock == 0
+            ? AppTheme.statusRejected
+            : AppTheme.statusPending,
+        'title': stock == 0
+            ? '${it['name']} habis'
+            : '${it['name']} hampir habis',
+        'sub': 'Sisa $stock ${it['unit']} · ${it['location']}',
+        'time': stock == 0 ? 'Kritis' : 'Perhatian',
+      });
+    }
+
+    final processed = kSharedApprovalRequests
+        .where((r) =>
+            r['status'] == 'approved' ||
+            r['status'] == 'rejected' ||
+            r['status'] == 'partial')
+        .toList()
+      ..sort((a, b) =>
+          (b['date'] as String).compareTo(a['date'] as String));
+
+    for (final r in processed.take(2)) {
+      final status = r['status'] as String;
+      list.add({
+        'kind': 'request',
+        'refCode': r['code'],
+        'reqStatus': status,
+        'icon': status == 'rejected'
+            ? Icons.cancel_rounded
+            : Icons.check_circle_rounded,
+        'color': status == 'rejected'
+            ? AppTheme.statusRejected
+            : AppTheme.statusApproved,
+        'title': status == 'rejected'
+            ? '${r['code']} ditolak'
+            : '${r['code']} disetujui',
+        'sub': '${r['requester']} · ${r['date']}',
+        'time': r['time'] as String,
+      });
+    }
+
+    return list;
+  }
+
+  void _handleNotificationTap(Map<String, dynamic> n) {
+    HapticFeedback.selectionClick();
+    final kind = n['kind'] as String?;
+
+    if (kind == 'pending') {
+      kApprovalFilter.value = 0;
+      if (widget.onNavigate != null) {
+        widget.onNavigate!(1);
+      } else {
+        _snack('Buka tab Persetujuan untuk meninjau permintaan');
+      }
+      return;
+    }
+
+    if (kind == 'low_stock') {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const StockCheckPage(initialFilter: 2),
+        ),
+      );
+      return;
+    }
+
+    if (kind == 'request') {
+      final status = n['reqStatus'] as String;
+      kApprovalFilter.value = status == 'rejected' ? 2 : 1;
+      if (widget.onNavigate != null) {
+        widget.onNavigate!(1);
+      } else {
+        _snack('Buka tab Persetujuan untuk melihat ${n['refCode']}');
+      }
+      return;
+    }
   }
 
   void _openPendingApprovals() {
     HapticFeedback.mediumImpact();
-    _snack('Membuka 14 permintaan pending');
+    kApprovalFilter.value = 0;
+    if (widget.onNavigate != null) {
+      widget.onNavigate!(1);
+    } else {
+      _snack('Buka tab Persetujuan untuk melihat ${kPendingCount()} permintaan');
+    }
   }
 
   void _onKpiTap(Map<String, dynamic> k) {
     HapticFeedback.selectionClick();
+    final key = k['key'] as String?;
+
+    switch (key) {
+      case 'pending':
+        // Buka tab Persetujuan dengan filter Pending.
+        kApprovalFilter.value = 0;
+        if (widget.onNavigate != null) {
+          widget.onNavigate!(1);
+        } else {
+          _snack('Buka tab Persetujuan untuk melihat ${k['value']} permintaan pending');
+        }
+        return;
+
+      case 'approved':
+        // Buka tab Persetujuan dengan filter Disetujui.
+        kApprovalFilter.value = 1;
+        if (widget.onNavigate != null) {
+          widget.onNavigate!(1);
+        } else {
+          _snack('Buka tab Persetujuan untuk melihat ${k['value']} permintaan disetujui');
+        }
+        return;
+
+      case 'low_stock':
+        // Buka halaman Cek Stok dengan filter Rendah.
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const StockCheckPage(initialFilter: 2),
+          ),
+        );
+        return;
+
+      case 'total_item':
+        // Pindah ke tab Inventaris.
+        if (widget.onNavigate != null) {
+          widget.onNavigate!(2);
+        } else {
+          _snack('Buka tab Inventaris untuk melihat ${k['value']} item');
+        }
+        return;
+    }
+
+    // Fallback (KPI tidak dikenali) — tetap tampilkan ringkasan.
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -301,6 +486,32 @@ class _AdminHomePageState extends State<AdminHomePage>
 
   void _onActivityTap(Map<String, dynamic> a) {
     HapticFeedback.selectionClick();
+    final kind = a['kind'] as String?;
+
+    if (kind == 'request') {
+      // Tap aktivitas permintaan → buka tab Persetujuan dengan filter
+      // sesuai status (disetujui/ditolak).
+      final type = a['type'] as String;
+      kApprovalFilter.value = type == 'reject' ? 2 : 1;
+      if (widget.onNavigate != null) {
+        widget.onNavigate!(1);
+      } else {
+        _snack('Buka tab Persetujuan untuk melihat ${a['refCode']}');
+      }
+      return;
+    }
+
+    if (kind == 'low_stock') {
+      // Tap item stok kritis → buka halaman Cek Stok di tab Rendah.
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const StockCheckPage(initialFilter: 2),
+        ),
+      );
+      return;
+    }
+
+    // Fallback — tampilkan ringkasan untuk aktivitas yang tidak dikenali.
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -330,7 +541,7 @@ class _AdminHomePageState extends State<AdminHomePage>
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: _activityColor(a['type'] as String)
-                        .withOpacity(0.12),
+                        .withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -355,26 +566,6 @@ class _AdminHomePageState extends State<AdminHomePage>
             Text(a['time'] as String,
                 style: TextStyle(
                     fontSize: 11, color: Colors.grey.shade600)),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _snack('Membuka detail aktivitas');
-                },
-                icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                label: const Text('Lihat Detail Lengkap'),
-              ),
-            ),
           ],
         ),
       ),
@@ -383,7 +574,11 @@ class _AdminHomePageState extends State<AdminHomePage>
 
   void _viewAllLowStock() {
     HapticFeedback.selectionClick();
-    _snack('Membuka semua stok rendah (7 item)');
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const StockCheckPage(initialFilter: 2),
+      ),
+    );
   }
 
   // ───────────────────────── build ─────────────────────────
@@ -600,37 +795,54 @@ class _AdminHomePageState extends State<AdminHomePage>
                       ),
                     ),
                   ),
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      IconButton(
-                        tooltip: 'Notifikasi',
-                        onPressed: _openNotifications,
-                        icon: const Icon(
-                          Icons.notifications_rounded,
-                          color: Colors.white,
+                  Builder(builder: (ctx) {
+                    final notifCount = _buildNotifications().length;
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton(
+                          tooltip: 'Notifikasi',
+                          onPressed: _openNotifications,
+                          icon: const Icon(
+                            Icons.notifications_rounded,
+                            color: Colors.white,
+                          ),
                         ),
-                      ),
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: IgnorePointer(
-                          child: Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: AppTheme.statusRejected,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 1.5,
+                        if (notifCount > 0)
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: IgnorePointer(
+                              child: Container(
+                                constraints: const BoxConstraints(
+                                  minWidth: 18,
+                                  minHeight: 18,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.statusRejected,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: Text(
+                                  notifCount > 99 ? '99+' : '$notifCount',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    );
+                  }),
                 ],
               ),
               const SizedBox(height: 18),
@@ -655,21 +867,21 @@ class _AdminHomePageState extends State<AdminHomePage>
                         const SizedBox(width: 10),
                         Expanded(
                           child: RichText(
-                            text: const TextSpan(
-                              style: TextStyle(
+                            text: TextSpan(
+                              style: const TextStyle(
                                 fontSize: 12.5,
                                 color: Colors.white,
                                 height: 1.4,
                               ),
                               children: [
-                                TextSpan(text: 'Ada '),
+                                const TextSpan(text: 'Ada '),
                                 TextSpan(
-                                  text: '14 permintaan',
-                                  style: TextStyle(
+                                  text: '${kPendingCount()} permintaan',
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                TextSpan(
+                                const TextSpan(
                                   text:
                                       ' menunggu persetujuan Anda hari ini.',
                                 ),
@@ -951,33 +1163,16 @@ class _AdminHomePageState extends State<AdminHomePage>
 // Bottom sheet: Notifikasi
 // ─────────────────────────────────────────────────────────────────────────────
 class _NotificationSheet extends StatelessWidget {
-  const _NotificationSheet();
+  final List<Map<String, dynamic>> items;
+  final void Function(Map<String, dynamic>) onSelect;
+
+  const _NotificationSheet({
+    required this.items,
+    required this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final items = <Map<String, dynamic>>[
-      {
-        'icon': Icons.fact_check_rounded,
-        'color': AppTheme.statusPending,
-        'title': '14 permintaan menunggu',
-        'sub': 'Beberapa request baru perlu disetujui',
-        'time': '5 mnt',
-      },
-      {
-        'icon': Icons.warning_amber_rounded,
-        'color': AppTheme.statusRejected,
-        'title': 'Stok UV Sterilizer 11W habis',
-        'sub': 'Segera lakukan restock',
-        'time': '1 jam',
-      },
-      {
-        'icon': Icons.south_rounded,
-        'color': AppTheme.primary,
-        'title': 'Restock masuk',
-        'sub': 'Media Karbon Aktif · 40 kg',
-        'time': '2 jam',
-      },
-    ];
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.55,
@@ -995,19 +1190,19 @@ class _NotificationSheet extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 14, 20, 6),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
+                  const Text(
                     'Notifikasi',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 18),
                   ),
                   Text(
-                    'Tandai dibaca',
-                    style: TextStyle(
+                    '${items.length} baru',
+                    style: const TextStyle(
                       color: AppTheme.primary,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1015,40 +1210,48 @@ class _NotificationSheet extends StatelessWidget {
                 ],
               ),
             ),
-            Expanded(
-              child: ListView.separated(
-                controller: controller,
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (ctx2, i) {
-                  final n = items[i];
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor:
-                          (n['color'] as Color).withOpacity(0.15),
-                      child: Icon(n['icon'] as IconData,
-                          color: n['color'] as Color),
+            if (items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  children: [
+                    Icon(Icons.notifications_off_rounded,
+                        size: 48, color: Colors.grey.shade400),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Tidak ada notifikasi baru',
+                      style: TextStyle(color: Colors.grey.shade600),
                     ),
-                    title: Text(n['title'] as String,
-                        style:
-                            const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(n['sub'] as String),
-                    trailing: Text(n['time'] as String,
-                        style: const TextStyle(
-                            color: Colors.grey, fontSize: 12)),
-                    onTap: () {
-                      Navigator.pop(ctx2);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Membuka: ${n['title']}'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                  );
-                },
+                  ],
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.separated(
+                  controller: controller,
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx2, i) {
+                    final n = items[i];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor:
+                            (n['color'] as Color).withValues(alpha: 0.15),
+                        child: Icon(n['icon'] as IconData,
+                            color: n['color'] as Color),
+                      ),
+                      title: Text(n['title'] as String,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(n['sub'] as String),
+                      trailing: Text(n['time'] as String,
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 12)),
+                      onTap: () => onSelect(n),
+                    );
+                  },
+                ),
               ),
-            ),
           ],
         );
       },

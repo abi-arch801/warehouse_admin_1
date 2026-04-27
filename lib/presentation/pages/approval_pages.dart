@@ -13,10 +13,213 @@ import 'stock_check_pages.dart';
 //   • Field eksternal: spesifikasi, link pembelian, estimasi harga
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Notifier global untuk meminta ApprovalPage memilih filter tertentu
+/// dari halaman lain (mis. KPI di Beranda → langsung tab Pending/Disetujui).
+/// 0 = Pending, 1 = Disetujui, 2 = Ditolak.
+final ValueNotifier<int> kApprovalFilter = ValueNotifier<int>(0);
+
+/// Daftar permintaan global. Dipakai sebagai sumber data untuk ApprovalPage
+/// dan untuk perhitungan KPI di Beranda. Saat admin menyetujui / menolak,
+/// list ini yang dimutasi sehingga semua halaman ikut sinkron.
+final List<Map<String, dynamic>> kSharedApprovalRequests =
+    _buildInitialApprovalRequests();
+
+int kPendingCount() =>
+    kSharedApprovalRequests.where((r) => r['status'] == 'pending').length;
+
+int kApprovedCount() => kSharedApprovalRequests
+    .where((r) => r['status'] == 'approved' || r['status'] == 'partial')
+    .length;
+
+int kRejectedCount() =>
+    kSharedApprovalRequests.where((r) => r['status'] == 'rejected').length;
+
+List<Map<String, dynamic>> _buildInitialApprovalRequests() {
+  return [
+    // ── Multi-item dari Gudang dengan foto ─────────────────────────────
+    {
+      'code': 'REQ-20260420-001',
+      'requester': 'Bagas Pratama',
+      'role': 'Operator IPAL',
+      'date': '20 Apr 2026',
+      'time': '08:42',
+      'status': 'pending',
+      'priority': 'tinggi',
+      'notes': 'Penggantian unit pompa & filter inlet yang rusak total.',
+      'source': 'gudang',
+      'items': [
+        {
+          'name': 'Pompa Submersible 7.5 kW',
+          'code': 'PUMP-001',
+          'qty': 1,
+          'unit': 'unit',
+          'photo': 'pompa_inlet.jpg',
+        },
+        {
+          'name': 'Filter Cartridge 10" 5µm',
+          'code': 'FLT-010-5',
+          'qty': 12,
+          'unit': 'pcs',
+          'photo': null,
+        },
+        {
+          'name': 'Seal Mekanis 25mm',
+          'code': 'SEL-025',
+          'qty': 4,
+          'unit': 'pcs',
+          'photo': 'seal_mekanis.jpg',
+        },
+      ],
+    },
+
+    // ── Single item dari Gudang dengan foto ────────────────────────────
+    {
+      'code': 'REQ-20260420-002',
+      'requester': 'Dewi Lestari',
+      'role': 'Teknisi IPAL',
+      'date': '20 Apr 2026',
+      'time': '09:15',
+      'status': 'pending',
+      'priority': 'sedang',
+      'notes': 'Penggantian rutin bulanan filter sand RO unit 1.',
+      'source': 'gudang',
+      'items': [
+        {
+          'name': 'Filter Cartridge 10" 5µm',
+          'code': 'FLT-010-5',
+          'qty': 24,
+          'unit': 'pcs',
+          'photo': 'filter_cartridge.jpg',
+        },
+      ],
+    },
+
+    // ── Multi-item dari Luar (pembelian) ───────────────────────────────
+    {
+      'code': 'REQ-20260420-003',
+      'requester': 'Reza Permana',
+      'role': 'Supervisor',
+      'date': '20 Apr 2026',
+      'time': '10:30',
+      'status': 'pending',
+      'priority': 'tinggi',
+      'notes':
+          'Membran tersumbat di unit RO Plant 02 — perlu pembelian segera.',
+      'source': 'luar',
+      'items': [
+        {
+          'name': 'Membran RO 4040',
+          'spec':
+              'TFC Polyamide, kapasitas 2.500 GPD, tekanan kerja 250 psi, merk: DOW Filmtec.',
+          'qty': 4,
+          'unit': 'modul',
+          'photo': 'membran_ro.jpg',
+          'link': 'https://aqualab.id/produk/membran-ro-4040-dow',
+          'price': 4250000,
+        },
+        {
+          'name': 'Housing Membran Stainless',
+          'spec':
+              'Material: SUS304, ukuran 4040, tekanan kerja max 300 psi, kelengkapan flange.',
+          'qty': 4,
+          'unit': 'unit',
+          'photo': 'housing_ss.jpg',
+          'link': 'https://aqualab.id/produk/housing-ss-4040',
+          'price': 1850000,
+        },
+      ],
+    },
+
+    // ── Single item dari Luar ──────────────────────────────────────────
+    {
+      'code': 'REQ-20260419-014',
+      'requester': 'Budi Santoso',
+      'role': 'Maintenance',
+      'date': '19 Apr 2026',
+      'time': '14:20',
+      'status': 'approved',
+      'priority': 'sedang',
+      'notes': 'Penggantian panel kontrol blower #3.',
+      'source': 'luar',
+      'items': [
+        {
+          'name': 'MCB 3 Phase 16A',
+          'spec':
+              'MCB 3P 16A, 6kA, kurva C, brand Schneider Domae, dilengkapi terminal cover.',
+          'qty': 3,
+          'unit': 'unit',
+          'photo': 'mcb_schneider.jpg',
+          'link': 'https://elektrikmart.co.id/p/mcb-3p-16a',
+          'price': 425000,
+        },
+      ],
+    },
+
+    // ── Single item dari Gudang (ditolak) ──────────────────────────────
+    {
+      'code': 'REQ-20260419-008',
+      'requester': 'Siti Rahayu',
+      'role': 'Operator IPAL',
+      'date': '19 Apr 2026',
+      'time': '11:00',
+      'status': 'rejected',
+      'priority': 'rendah',
+      'notes': 'Permintaan terlalu besar untuk anggaran bulan ini.',
+      'source': 'gudang',
+      'items': [
+        {
+          'name': 'Diffuser Gelembung Halus 9"',
+          'code': 'DIF-009',
+          'qty': 30,
+          'unit': 'unit',
+          'photo': null,
+        },
+      ],
+    },
+
+    // ── Multi-item Gudang (disetujui) ──────────────────────────────────
+    {
+      'code': 'REQ-20260418-005',
+      'requester': 'Bagas Pratama',
+      'role': 'Operator IPAL',
+      'date': '18 Apr 2026',
+      'time': '15:40',
+      'status': 'approved',
+      'priority': 'sedang',
+      'notes': 'Penambahan kapasitas aerasi tahap 2.',
+      'source': 'gudang',
+      'items': [
+        {
+          'name': 'Blower Roots 1 HP',
+          'code': 'BLW-1HP',
+          'qty': 2,
+          'unit': 'unit',
+          'photo': 'blower_roots.jpg',
+        },
+        {
+          'name': 'Pipa PVC 4"',
+          'code': 'PVC-004',
+          'qty': 6,
+          'unit': 'batang',
+          'photo': null,
+        },
+      ],
+    },
+  ];
+}
+
 class ApprovalPage extends StatefulWidget {
   final void Function(int tabIndex)? onNavigate;
 
-  const ApprovalPage({super.key, this.onNavigate});
+  /// Filter awal saat halaman dibuka.
+  /// 0 = Pending, 1 = Disetujui, 2 = Ditolak.
+  final int initialFilter;
+
+  const ApprovalPage({
+    super.key,
+    this.onNavigate,
+    this.initialFilter = 0,
+  });
 
   @override
   State<ApprovalPage> createState() => _ApprovalPageState();
@@ -24,189 +227,32 @@ class ApprovalPage extends StatefulWidget {
 
 class _ApprovalPageState extends State<ApprovalPage>
     with SingleTickerProviderStateMixin {
-  int _filter = 0;
+  late int _filter = widget.initialFilter;
   final List<String> _filters = const [
     'Pending',
     'Disetujui',
     'Ditolak',
   ];
 
-  late List<Map<String, dynamic>> _requests;
+  // Alias agar kode lama (yang merujuk `_requests`) tetap bekerja.
+  List<Map<String, dynamic>> get _requests => kSharedApprovalRequests;
 
   @override
   void initState() {
     super.initState();
-    _requests = [
-      // ── Multi-item dari Gudang dengan foto ─────────────────────────────
-      {
-        'code': 'REQ-20260420-001',
-        'requester': 'Bagas Pratama',
-        'role': 'Operator IPAL',
-        'date': '20 Apr 2026',
-        'time': '08:42',
-        'status': 'pending',
-        'priority': 'tinggi',
-        'notes': 'Penggantian unit pompa & filter inlet yang rusak total.',
-        'source': 'gudang',
-        'items': [
-          {
-            'name': 'Pompa Submersible 7.5 kW',
-            'code': 'PUMP-001',
-            'qty': 1,
-            'unit': 'unit',
-            'photo': 'pompa_inlet.jpg',
-          },
-          {
-            'name': 'Filter Cartridge 10" 5µm',
-            'code': 'FLT-010-5',
-            'qty': 12,
-            'unit': 'pcs',
-            'photo': null,
-          },
-          {
-            'name': 'Seal Mekanis 25mm',
-            'code': 'SEL-025',
-            'qty': 4,
-            'unit': 'pcs',
-            'photo': 'seal_mekanis.jpg',
-          },
-        ],
-      },
+    kApprovalFilter.addListener(_onExternalFilterChange);
+  }
 
-      // ── Single item dari Gudang dengan foto ────────────────────────────
-      {
-        'code': 'REQ-20260420-002',
-        'requester': 'Dewi Lestari',
-        'role': 'Teknisi IPAL',
-        'date': '20 Apr 2026',
-        'time': '09:15',
-        'status': 'pending',
-        'priority': 'sedang',
-        'notes': 'Penggantian rutin bulanan filter sand RO unit 1.',
-        'source': 'gudang',
-        'items': [
-          {
-            'name': 'Filter Cartridge 10" 5µm',
-            'code': 'FLT-010-5',
-            'qty': 24,
-            'unit': 'pcs',
-            'photo': 'filter_cartridge.jpg',
-          },
-        ],
-      },
+  @override
+  void dispose() {
+    kApprovalFilter.removeListener(_onExternalFilterChange);
+    super.dispose();
+  }
 
-      // ── Multi-item dari Luar (pembelian) ───────────────────────────────
-      {
-        'code': 'REQ-20260420-003',
-        'requester': 'Reza Permana',
-        'role': 'Supervisor',
-        'date': '20 Apr 2026',
-        'time': '10:30',
-        'status': 'pending',
-        'priority': 'tinggi',
-        'notes':
-            'Membran tersumbat di unit RO Plant 02 — perlu pembelian segera.',
-        'source': 'luar',
-        'items': [
-          {
-            'name': 'Membran RO 4040',
-            'spec':
-                'TFC Polyamide, kapasitas 2.500 GPD, tekanan kerja 250 psi, merk: DOW Filmtec.',
-            'qty': 4,
-            'unit': 'modul',
-            'photo': 'membran_ro.jpg',
-            'link': 'https://aqualab.id/produk/membran-ro-4040-dow',
-            'price': 4250000,
-          },
-          {
-            'name': 'Housing Membran Stainless',
-            'spec':
-                'Material: SUS304, ukuran 4040, tekanan kerja max 300 psi, kelengkapan flange.',
-            'qty': 4,
-            'unit': 'unit',
-            'photo': 'housing_ss.jpg',
-            'link': 'https://aqualab.id/produk/housing-ss-4040',
-            'price': 1850000,
-          },
-        ],
-      },
-
-      // ── Single item dari Luar ──────────────────────────────────────────
-      {
-        'code': 'REQ-20260419-014',
-        'requester': 'Budi Santoso',
-        'role': 'Maintenance',
-        'date': '19 Apr 2026',
-        'time': '14:20',
-        'status': 'approved',
-        'priority': 'sedang',
-        'notes': 'Penggantian panel kontrol blower #3.',
-        'source': 'luar',
-        'items': [
-          {
-            'name': 'MCB 3 Phase 16A',
-            'spec':
-                'MCB 3P 16A, 6kA, kurva C, brand Schneider Domae, dilengkapi terminal cover.',
-            'qty': 3,
-            'unit': 'unit',
-            'photo': 'mcb_schneider.jpg',
-            'link': 'https://elektrikmart.co.id/p/mcb-3p-16a',
-            'price': 425000,
-          },
-        ],
-      },
-
-      // ── Single item dari Gudang (ditolak) ──────────────────────────────
-      {
-        'code': 'REQ-20260419-008',
-        'requester': 'Siti Rahayu',
-        'role': 'Operator IPAL',
-        'date': '19 Apr 2026',
-        'time': '11:00',
-        'status': 'rejected',
-        'priority': 'rendah',
-        'notes': 'Permintaan terlalu besar untuk anggaran bulan ini.',
-        'source': 'gudang',
-        'items': [
-          {
-            'name': 'Diffuser Gelembung Halus 9"',
-            'code': 'DIF-009',
-            'qty': 30,
-            'unit': 'unit',
-            'photo': null,
-          },
-        ],
-      },
-
-      // ── Multi-item Gudang (disetujui) ──────────────────────────────────
-      {
-        'code': 'REQ-20260418-005',
-        'requester': 'Bagas Pratama',
-        'role': 'Operator IPAL',
-        'date': '18 Apr 2026',
-        'time': '15:40',
-        'status': 'approved',
-        'priority': 'sedang',
-        'notes': 'Penambahan kapasitas aerasi tahap 2.',
-        'source': 'gudang',
-        'items': [
-          {
-            'name': 'Blower Roots 1 HP',
-            'code': 'BLW-1HP',
-            'qty': 2,
-            'unit': 'unit',
-            'photo': 'blower_roots.jpg',
-          },
-          {
-            'name': 'Pipa PVC 4"',
-            'code': 'PVC-004',
-            'qty': 6,
-            'unit': 'batang',
-            'photo': null,
-          },
-        ],
-      },
-    ];
+  void _onExternalFilterChange() {
+    final v = kApprovalFilter.value;
+    if (!mounted || v == _filter) return;
+    setState(() => _filter = v);
   }
 
   // ─── Helpers status / sumber / prioritas ────────────────────────────────

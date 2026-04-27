@@ -120,11 +120,51 @@ List<Map<String, dynamic>> kSharedStockItems = [
   },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper agregat untuk dashboard / KPI lain. Selalu menghitung ulang dari
+// `kSharedStockItems` sehingga setiap perubahan stok langsung terefleksi.
+// ─────────────────────────────────────────────────────────────────────────────
+int kTotalStockItems() => kSharedStockItems.length;
+
+int kOutOfStockCount() {
+  var c = 0;
+  for (final it in kSharedStockItems) {
+    if ((it['stock'] as int) == 0) c++;
+  }
+  return c;
+}
+
+int kLowStockCount() {
+  var c = 0;
+  for (final it in kSharedStockItems) {
+    final s = it['stock'] as int;
+    final m = it['min'] as int;
+    if (s > 0 && s < m) c++;
+  }
+  return c;
+}
+
+/// Stok bermasalah = habis + rendah (di bawah minimum).
+int kCriticalStockCount() => kOutOfStockCount() + kLowStockCount();
+
+List<Map<String, dynamic>> kLowStockItems() {
+  return kSharedStockItems.where((it) {
+    final s = it['stock'] as int;
+    final m = it['min'] as int;
+    return s < m; // termasuk habis
+  }).toList()
+    ..sort((a, b) => (a['stock'] as int).compareTo(b['stock'] as int));
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  1) STOCK CHECK PAGE
 // ═════════════════════════════════════════════════════════════════════════════
 class StockCheckPage extends StatefulWidget {
-  const StockCheckPage({super.key});
+  /// Filter awal saat halaman dibuka:
+  /// 0 = Semua, 1 = Habis, 2 = Rendah, 3 = Aman.
+  final int initialFilter;
+
+  const StockCheckPage({super.key, this.initialFilter = 0});
 
   @override
   State<StockCheckPage> createState() => _StockCheckPageState();
@@ -132,7 +172,7 @@ class StockCheckPage extends StatefulWidget {
 
 class _StockCheckPageState extends State<StockCheckPage> {
   final _searchCtrl = TextEditingController();
-  int _filter = 0; // 0 semua, 1 habis, 2 rendah, 3 aman
+  late int _filter = widget.initialFilter; // 0 semua, 1 habis, 2 rendah, 3 aman
 
   final List<String> _filters = const ['Semua', 'Habis', 'Rendah', 'Aman'];
 
